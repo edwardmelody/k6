@@ -325,12 +325,26 @@ a commandline interface for interacting with it.`,
 			logger.Warn("No script iterations finished, consider making the test duration longer")
 		}
 
+		if conf.Linger.Bool {
+			select {
+			case <-lingerCtx.Done():
+				// do nothing, we were interrupted by Ctrl+C already
+			default:
+				logger.Info("Linger set; waiting for Ctrl+C...")
+				<-lingerCtx.Done()
+			}
+		}
+		globalCancel() // signal the Engine that it should wind down
+		logger.Debug("Waiting for engine processes to finish...")
+		engineWait()
+
 		data := ui.SummaryData{
 			Metrics:   engine.Metrics,
 			RootGroup: engine.ExecutionScheduler.GetRunner().GetDefaultGroup(),
 			Time:      executionState.GetCurrentTestRunDuration(),
 			TimeUnit:  conf.Options.SummaryTimeUnit.String,
 		}
+
 		// Print the end-of-test summary.
 		if !conf.NoSummary.Bool {
 			fprintf(stdout, "\n")
@@ -357,19 +371,6 @@ a commandline interface for interacting with it.`,
 				}
 			}
 		}
-
-		if conf.Linger.Bool {
-			select {
-			case <-lingerCtx.Done():
-				// do nothing, we were interrupted by Ctrl+C already
-			default:
-				logger.Info("Linger set; waiting for Ctrl+C...")
-				<-lingerCtx.Done()
-			}
-		}
-		globalCancel() // signal the Engine that it should wind down
-		logger.Debug("Waiting for engine processes to finish...")
-		engineWait()
 
 		if engine.IsTainted() {
 			return ExitCode{error: errors.New("some thresholds have failed"), Code: thresholdHaveFailedErrorCode}
